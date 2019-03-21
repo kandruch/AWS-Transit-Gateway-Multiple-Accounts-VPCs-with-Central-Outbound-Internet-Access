@@ -1,0 +1,452 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'This template deploys a VPC with a public and private subnet per availability zone along with a TransitGateway Attachment and VPC Flow logs'
+ 
+ 
+###############################################################################
+#                               Metadata                                      #
+###############################################################################
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: VPC CIDR Range & Subnets
+        Parameters:
+          - VpcCIDR
+          - PublicSubnet1CIDR
+          - PublicSubnet2CIDR
+          - PrivateSubnet1CIDR
+          - PrivateSubnet2CIDR
+      - Label:
+          default: VPC Options
+        Parameters:
+          - EnableVPCFlow
+          - EnableIGW
+          - OnPremCIDR
+          - EnableTransitGateway
+          - TransitGateway
+ 
+ 
+    ParameterLabels:
+      VpcCIDR
+      PublicSubnet1CIDR
+      PublicSubnet2CIDR
+      PrivateSubnet1CIDR
+      PrivateSubnet2CIDR
+      EnableVPCFlow
+      EnableIGW
+      OnPremCIDR
+      EnableTransitGateway
+      TransitGateway
+ 
+ 
+###############################################################################
+#                               Parameters                                    #
+###############################################################################
+Parameters:
+ 
+######### VPC Flow Logs #########
+  EnableVPCFlow:
+    Description: Enable VPC Flow Logs?
+    Type: String
+    Default: true
+    AllowedValues:
+    - true
+    - false
+   
+######### Internet Gateway - for direct connection to internet. #########
+  EnableIGW:
+    Description: Create a direct connection to the internet.
+    Type: String
+    Default: true
+    AllowedValues:
+    - true
+    - false
+   
+######### Transit Gateway Attachement - for direct connection to transit gateway. #########
+  EnableTransitGateway:
+    Description: Create a direct connection to the transit gateway.
+    Type: String
+    Default: true
+    AllowedValues:
+    - true
+    - false
+ 
+######### Transit Gateway Id #########
+  TransitGateway:
+    Description: Specify a transit gateway id for your environment.
+    Type: String
+    Default: tgw-xxxxxxxxxxxxxxx
+    AllowedValues:
+    - tgw-xxxxxxxxxxxxxxx
+ 
+ 
+######### Environment Name #########
+  EnvName:
+    Description: An environment name that will be prefixed to resource names (ie. "bu-dev").
+    Type: String
+ 
+######### VPC CIDR IP #########
+  VpcCIDR: 
+    Description: Please enter in the CIDR IP range for the VPC.
+    Type: String
+ 
+######### Availability Zone ca-central-1a CIDR IP parameters #########
+  PublicSubnet1CIDR:
+    Description: Please enter in the CIDR IP range for the public subnet in Availability Zone ca-central-1a
+    Type: String
+     
+  PrivateSubnet1CIDR:
+    Description: Please enter in the CIDR IP range for the private subnet in Availability Zone ca-central-1a
+    Type: String
+     
+######### Availability Zone ca-central-1b CIDR IP parameters #########
+  PublicSubnet2CIDR:
+    Description: Please enter in the CIDR IP range for the public subnet in Availability Zone ca-central-1b
+    Type: String
+  
+  PrivateSubnet2CIDR:
+    Description: Please enter in the CIDR IP range for the private subnet in Availability Zone ca-central-1b
+    Type: String
+ 
+######### On-Prem CIDR #########
+  OnPremCIDR:
+    Description: On-Premise CIDR (used in security groups)
+    Default: '10.0.0.0/8'
+    Type: String
+   
+###############################################################################
+#                               Conditions                                    #
+###############################################################################
+Conditions:
+  EnableVPCFlowLogs: !Equals
+    - !Ref EnableVPCFlow
+    - 'true'
+ 
+  IGWCondition: !Equals
+    - !Ref EnableIGW
+    - 'true'
+   
+  TGWCondition: !Equals
+    - !Ref EnableTransitGateway
+    - 'true'
+
+ 
+##############################################################################
+#                               Resources                                    #
+##############################################################################
+######### Base VPC #########
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      # InstanceTenancy: 'default' ## default or dedicated ?
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}
+      
+######### Internet Gateway with attachment to the VPC #########
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Condition: IGWCondition
+    Properties:
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}-igw
+ 
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Condition: IGWCondition
+    Properties:
+      InternetGatewayId: !Ref IGW
+      VpcId: !Ref VPC
+ 
+######### Transit Gateway Attachment #########
+  TransitGatewayAttachment:
+    Type: "AWS::EC2::TransitGatewayAttachment"
+    DependsOn:
+      - PrivateSubnet1
+      - PrivateSubnet2
+    Condition: TGWCondition
+    Properties:
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvName}-tgw-attachment
+      TransitGatewayId: !Ref TransitGateway
+      VpcId: !Ref VPC
+ 
+######### Public Subnets #########
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        'Fn::Select':
+          - '0'
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}-public-1a
+    
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        'Fn::Select':
+          - '1'
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}-public-1b
+       
+######### Private Subnets #########
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        'Fn::Select':
+          - '0'
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}-private-1a
+ 
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone:
+        'Fn::Select':
+          - '1'
+          - 'Fn::GetAZs':
+              Ref: 'AWS::Region'
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}-private-1b
+ 
+######### Route table for public subnets #########
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}-public-rtb
+ 
+######### Allows public subnet to talk to the Internet Gateway #########
+  IGWPublicRoute:
+    Type: AWS::EC2::Route
+    Condition: IGWCondition
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+ 
+######### Allows private subnets to talk to the Transit Gateway #########
+  # TGWPublicRoute:
+  #   Type: AWS::EC2::Route
+  #   DependsOn: TransitGatewayAttachment
+  #   Condition: TGWCondition
+  #   Properties:
+  #     RouteTableId: !Ref PrivateRouteTable1
+  #     DestinationCidrBlock: 10.0.0.0/8
+  #     GatewayId: !Ref TransitGatewayAttachment
+ 
+######### Both Public subnets are associated to the same public route table with the IGW attached #########
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+ 
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+ 
+######### Route table for private subnets #########
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}-private-rtb-a
+ 
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: 'Name'
+          Value: !Sub ${EnvName}-private-rtb-b
+ 
+######### Associates both private subnets to their route tables #########
+  RouteTablePrivateSubnet1Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+ 
+  RouteTablePrivateSubnet2Association:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+ 
+ 
+######### Security Group #########
+  NoIngressSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: "no-ingress-sg"
+      GroupDescription: "Security group preventing ingress"
+      VpcId: !Ref VPC
+  IcmpSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: 'allow-icmp-sg'
+      GroupDescription: Allow ICMP from on-premise networks
+      SecurityGroupIngress:
+        - IpProtocol: icmp
+          CidrIp: !Ref OnPremCIDR
+          FromPort: -1
+          ToPort: -1
+  RdpSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: 'allow-rdp-sg'
+      GroupDescription: Allow RDP connections from on-premise networks
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          CidrIp: !Ref OnPremCIDR
+          FromPort: '3389'
+          ToPort: '3389'
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: 'allow-web-sg'
+      GroupDescription: 'Allow HTTP/HTTPS connections from on-premise networks'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          CidrIp: !Ref OnPremCIDR
+          FromPort: '443'
+          ToPort: '443'
+        - IpProtocol: tcp
+          CidrIp: !Ref OnPremCIDR
+          FromPort: '80'
+          ToPort: '80'
+  SshSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupName: 'allow-ssh-sg'
+      GroupDescription: 'Allow SSH connections from on-premise networks'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          CidrIp: !Ref OnPremCIDR
+          FromPort: '22'
+          ToPort: '22'
+ 
+   
+######### VPC Flow Logs #########
+  FlowLogs:
+    Type: 'AWS::EC2::FlowLog'
+    Condition: EnableVPCFlowLogs
+    Properties:
+      ResourceType: VPC
+      ResourceId: !Ref VPC
+      TrafficType: ALL
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: FlowLogsGroup
+      DeliverLogsPermissionArn:
+        'Fn::GetAtt':
+          - IamRoleForFlowLogs
+          - Arn
+  FlowLogsGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Condition: EnableVPCFlowLogs
+    Properties:
+      LogGroupName: FlowLogsGroup #Update later
+  IamRoleForFlowLogs:
+    Type: 'AWS::IAM::Role'
+    Condition: EnableVPCFlowLogs
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: allow-access-to-cw-logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                Resource: '*'
+   
+###############################################################################
+#                               Exports/Outputs                               #
+###############################################################################
+Outputs:
+ 
+  NoIngressSG:
+    Description: Security group preventing ingress
+    Value: !Ref NoIngressSG
+ 
+  VPCID:
+    Value: !Ref 'VPC'
+    Description: VPC ID
+    Export:
+      Name: !Sub ${AWS::StackName}-VpcId
+       
+  PublicSubnet1:
+    Description: A reference to the public subnet AZ A
+    Value: !Ref PublicSubnet1
+ 
+  PublicSubnet2:
+    Description: A reference to the public subnet AZ B
+    Value: !Ref PublicSubnet2
+ 
+  PrivateSubnet1:
+    Description: A reference to the private subnet AZ A
+    Value: !Ref PrivateSubnet1
+ 
+  PrivateSubnet2:
+    Description: A reference to the private subnet AZ B
+    Value: !Ref PrivateSubnet2
+ 
+  TransitGateWayAttachment:
+    Description: The TransitGateway attachment ID
+    Value: !Ref TransitGatewayAttachment
