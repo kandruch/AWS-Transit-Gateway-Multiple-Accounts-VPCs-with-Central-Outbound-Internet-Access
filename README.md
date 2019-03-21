@@ -630,6 +630,7 @@ The end result will resemble Figure 1.5 below.
 Figure 1.5 – Spoke VPC to network VPC with a Firewall instance
 
 Verify Outbound Connectivity Through The TGW
+-------------------------------------------
 
 From the spoke VPCs ensure the private subnet route table has a static route pointing to the tgw-attachment.
 
