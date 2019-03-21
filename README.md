@@ -40,7 +40,7 @@ Deployment Walkthrough
 Prerequisites
 
 •	At least 2 or more AWS accounts
-•	AWS Cli installed ([MacOS](https://docs.aws.amazon.com/cli/latest/userguide/install-macos.html), [Windows](https://docs.aws.amazon.com/cli/latest/userguide/install-windows.html)
+•	AWS Cli installed ([MacOS](https://docs.aws.amazon.com/cli/latest/userguide/install-macos.html), [Windows](https://docs.aws.amazon.com/cli/latest/userguide/install-windows.html))
 
 For simplicity we will be configuring our VPCs with two subnets, public and private. Only the private subnets from each availability zone will communicate through the TGW.
 
@@ -52,10 +52,7 @@ The first step is enabling trusted access in AWS Organizations from the master a
 The first step is to enable automatic resource sharing for AWS Organizations from the master account: See the [user guide](https://docs.aws.amazon.com/ram/latest/userguide/getting-started-sharing.html#getting-started-sharing-orgs) for more details.
 
 ```
-Bash
-
 aws ram enable-sharing-with-aws-organization --region ca-central-1 --profile master
-
 ```
 ![Automatic Resource Sharing](./automatic-resource-sharing.png)
 
@@ -70,8 +67,6 @@ In a multi-account setup, I recommend using a dedicated network account and VPC 
 Create a file with the CloudFormation code below (edit the properties as you see fit):
 
 ```
-YAML
-
 AWSTemplateFormatVersion: 2010-09-09
 Description: "TransitGateway: This template creates a network transit hub that interconnects attachments (VPCs and VPNs) within the same account or across accounts"
  
@@ -104,10 +99,7 @@ Outputs:
 Deploy the CloudFormation stack for the TGW in the network account:
 
 ```
-Bash
-
 aws cloudformation create-stack --stack-name tgw-tester --template-body file://transitgatewayV2.yml --profile def --region ca-central-1
-
 ```
 
 Create A Resource Share: Transit Gateway
@@ -116,13 +108,10 @@ Create A Resource Share: Transit Gateway
 Once the Transit Gateway is deployed it can be shared across multiple accounts, the Organization or Organizational Unit. In this scenario we are sharing it across the entire Organization which was enabled from the master account.
 
 ```
-Bash
-
 aws ram create-resource-share --name TransitGateway --resource-arn arn:aws:ec2:ca-central-1:<account#>:transit-gateway/tgw-04d6xxxxxxxxxxx \
 --principals arn:aws:organizations::<account#>:organization/<o-3xxxxxxx> \
 --tags key=Name,value=Production-TGW \
 --region ca-central-1
-
 ```
 
  
@@ -134,8 +123,6 @@ Now that we created a Transit Gateway service and enabled automatic resource sha
 Be sure to disable the internet gateway for the spoke VPC. Only the outbound VPC in the network account will contain an IGW.
 
 ```
-YAML
-
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'This template deploys a VPC with a public and private subnet per availability zone along with a TransitGateway Attachment and VPC Flow logs'
  
@@ -616,22 +603,16 @@ Steps
 
 1.	From the networking account create the nat instance and place it into the public subnet and associate an elastic IP address (EIP) . Note: Amazon Machine Image (ami) is specific to ca-central-1, please change the ami-id according to your region.
 ```
-Bash
-
 aws ec2 run-instances   --image-id ami-0b32354309da5bba5 --key-name MyKey --security-groups EC2SecurityGroup --instance-type t2.micro --placement AvailabilityZone=ca-central-1 --block-device-mappings DeviceName=/dev/sdh,Ebs={VolumeSize=50} --count 1
 ```
 Create an EIP and associate it to the instance.
 
 ```
-Bash 
-
 aws ec2 associate-address --instance-id i-0b26391xxxxxxxx --allocation-id eipalloc-64d58xxxx
 ```
 2.	Disable source/destination check on the instance
 
 ```
-Bash
-
 aws ec2 modify-instance-attribute --no-source-dest-check --instance-id i-0b26391xxxxxxxx
 ```
 
